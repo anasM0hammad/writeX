@@ -1,0 +1,264 @@
+/* ============================================
+   WriteX — Content Script Styles
+   Premium, minimal, inline with X's design language
+   ============================================ */
+
+/* --- Container --- */
+.writex-container {
+  position: relative;
+  width: 100%;
+  padding: 8px 0 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  z-index: 10;
+}
+
+/* --- Trigger Bar --- */
+.writex-trigger-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+/* --- Rewrite Button --- */
+.writex-btn-rewrite {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #1d9bf0 0%, #0d8de0 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 1px 3px rgba(29, 155, 240, 0.2);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.writex-btn-rewrite:hover {
+  background: linear-gradient(135deg, #1a8cd8 0%, #0a7acc 100%);
+  box-shadow: 0 2px 8px rgba(29, 155, 240, 0.35);
+  transform: translateY(-0.5px);
+}
+
+.writex-btn-rewrite:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(29, 155, 240, 0.2);
+}
+
+.writex-btn-rewrite[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.writex-btn-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* --- Tone Selector --- */
+.writex-tone-selector {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(239, 243, 244, 0.8);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+}
+
+/* Dark mode support (X uses a dark class on body or root) */
+[data-color-mode="dark"] .writex-tone-selector,
+.dark .writex-tone-selector,
+[style*="background-color: rgb(0, 0, 0)"] .writex-tone-selector {
+  background: rgba(39, 44, 48, 0.8);
+}
+
+.writex-tone-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: #536471;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.writex-tone-btn:hover {
+  background: rgba(29, 155, 240, 0.08);
+  color: #1d9bf0;
+}
+
+.writex-tone-active {
+  background: #ffffff !important;
+  color: #0f1419 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-weight: 600;
+}
+
+[data-color-mode="dark"] .writex-tone-active,
+.dark .writex-tone-active {
+  background: rgba(29, 155, 240, 0.15) !important;
+  color: #1d9bf0 !important;
+  box-shadow: none;
+}
+
+/* --- Result Panel --- */
+.writex-result-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: rgba(239, 243, 244, 0.5);
+  border: 1px solid rgba(207, 217, 222, 0.6);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  animation: writex-slideIn 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+[data-color-mode="dark"] .writex-result-panel,
+.dark .writex-result-panel {
+  background: rgba(32, 35, 39, 0.7);
+  border-color: rgba(56, 68, 77, 0.6);
+}
+
+@keyframes writex-slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.writex-result-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #0f1419;
+  word-break: break-word;
+  margin-bottom: 10px;
+}
+
+[data-color-mode="dark"] .writex-result-text,
+.dark .writex-result-text {
+  color: #e7e9ea;
+}
+
+.writex-result-text.writex-error {
+  color: #f4212e;
+  font-size: 13px;
+}
+
+/* --- Result Actions --- */
+.writex-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.writex-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.writex-btn-replace {
+  background: #0f1419;
+  color: #ffffff;
+}
+
+.writex-btn-replace:hover {
+  background: #272c30;
+}
+
+[data-color-mode="dark"] .writex-btn-replace,
+.dark .writex-btn-replace {
+  background: #eff3f4;
+  color: #0f1419;
+}
+
+[data-color-mode="dark"] .writex-btn-replace:hover,
+.dark .writex-btn-replace:hover {
+  background: #d7dbdc;
+}
+
+.writex-btn-retry {
+  background: transparent;
+  color: #536471;
+  border: 1px solid rgba(207, 217, 222, 0.8);
+}
+
+.writex-btn-retry:hover {
+  background: rgba(29, 155, 240, 0.08);
+  color: #1d9bf0;
+  border-color: rgba(29, 155, 240, 0.3);
+}
+
+.writex-btn-dismiss {
+  background: transparent;
+  color: #536471;
+  padding: 6px 10px;
+  margin-left: auto;
+  font-size: 14px;
+}
+
+.writex-btn-dismiss:hover {
+  color: #f4212e;
+  background: rgba(244, 33, 46, 0.08);
+}
+
+/* --- Loader --- */
+.writex-loader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  animation: writex-fadeIn 0.15s ease;
+}
+
+@keyframes writex-fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.writex-loader-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(29, 155, 240, 0.2);
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: writex-spin 0.6s linear infinite;
+}
+
+@keyframes writex-spin {
+  to { transform: rotate(360deg); }
+}
+
+.writex-loader-text {
+  font-size: 13px;
+  color: #536471;
+}
+
+[data-color-mode="dark"] .writex-loader-text,
+.dark .writex-loader-text {
+  color: #71767b;
+}
