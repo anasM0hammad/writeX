@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WriteX</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <header class="wx-header">
+      <div class="wx-logo">
+        <img src="icons/icon-48.png" alt="WriteX" class="wx-logo-icon">
+        <h1 class="wx-title">WriteX</h1>
+      </div>
+      <span class="wx-version">v0.1.0</span>
+    </header>
+
+    <main class="wx-main">
+      <!-- WebGPU Status -->
+      <section class="wx-status-card" id="webgpu-status">
+        <div class="wx-status-row">
+          <span class="wx-status-label">WebGPU</span>
+          <span class="wx-status-badge" id="webgpu-badge">Checking...</span>
+        </div>
+      </section>
+
+      <!-- Model Status -->
+      <section class="wx-status-card" id="model-status">
+        <div class="wx-status-row">
+          <span class="wx-status-label">AI Model</span>
+          <span class="wx-status-badge" id="model-badge">Not loaded</span>
+        </div>
+        <div class="wx-progress-container" id="progress-container" style="display: none;">
+          <div class="wx-progress-bar">
+            <div class="wx-progress-fill" id="progress-fill"></div>
+          </div>
+          <span class="wx-progress-text" id="progress-text">0%</span>
+        </div>
+        <p class="wx-status-hint" id="model-hint">Model downloads once (~150MB), then works offline forever.</p>
+      </section>
+
+      <!-- Actions -->
+      <div class="wx-actions">
+        <button class="wx-btn wx-btn-primary" id="btn-load-model">
+          Load AI Model
+        </button>
+      </div>
+    </main>
+
+    <footer class="wx-footer">
+      <p>Local AI. Private. Free forever.</p>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
