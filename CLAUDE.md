@@ -11,7 +11,7 @@ WriteX is a Chrome extension that rewrites tweets directly inside X (twitter.com
 - Vanilla CSS (no frameworks)
 
 ## Architecture
-- `src/content/` — Content script: MutationObserver-based UI injection, text capture, DOM manipulation
+- `src/content/` — Content script: text capture from active editable, text replacement via context menu
 - `src/background/` — Service worker: message routing, lifecycle management
 - `src/worker/` — Web worker: WebLLM inference (off main thread, fully async)
 - `src/popup/` — Extension popup: onboarding, model status, WebGPU check
@@ -25,9 +25,9 @@ WriteX is a Chrome extension that rewrites tweets directly inside X (twitter.com
 
 ## MVP 1 Scope
 - 3 tone presets: Improve, Viral, Short
-- Inline rewrite button near tweet box
-- Simple rewrite preview with Replace/Retry (no diff view)
-- MutationObserver-based DOM detection (no hardcoded selectors)
+- Context menu (right-click) "Enhance Post" with tone sub-options
+- Simple rewrite — replaces text directly in the compose box
+- Badge icon on toolbar shows model loading status
 - WebLLM + Phi-2 local inference
 - Popup with onboarding + model download status
 - Graceful WebGPU fallback messaging
@@ -36,4 +36,5 @@ WriteX is a Chrome extension that rewrites tweets directly inside X (twitter.com
 - For any asset/icon/image requirement: provide Grok and DALL-E prompts with the file path to place the asset in, rather than generating placeholder images.
 - Keep the UI premium and minimalistic. Every pixel matters.
 - All inference and heavy computation must run in Web Workers — never block the main thread.
-- Use MutationObserver for DOM detection — never rely on hardcoded X/Twitter selectors alone.
+- Use context menu for interaction — avoid injecting UI into X's DOM.
+- Dark theme only — match X's dark design language.

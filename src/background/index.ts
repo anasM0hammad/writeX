@@ -1,14 +1,75 @@
-import { ExtensionMessage, ModelStatus } from '@shared/types';
+import { ExtensionMessage, ModelStatus, Tone, TONE_PRESETS } from '@shared/types';
 
 let modelStatus: ModelStatus = 'not_loaded';
-let workerPort: chrome.runtime.Port | null = null;
 
-/**
- * Background service worker.
- * Routes messages between content scripts and the inference worker.
- */
+// --- Context menu setup ---
+chrome.runtime.onInstalled.addListener(() => {
+  // Parent menu
+  chrome.contextMenus.create({
+    id: 'writex-enhance',
+    title: 'Enhance Post',
+    contexts: ['editable'],
+    documentUrlPatterns: ['https://x.com/*', 'https://twitter.com/*'],
+  });
 
-// Handle messages from content scripts
+  // Tone sub-menus
+  TONE_PRESETS.forEach((preset) => {
+    chrome.contextMenus.create({
+      id: `writex-tone-${preset.id}`,
+      parentId: 'writex-enhance',
+      title: `${preset.emoji} ${preset.label}`,
+      contexts: ['editable'],
+      documentUrlPatterns: ['https://x.com/*', 'https://twitter.com/*'],
+    });
+  });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!tab?.id) return;
+  const menuId = info.menuItemId as string;
+  if (!menuId.startsWith('writex-tone-')) return;
+
+  const tone = menuId.replace('writex-tone-', '') as Tone;
+
+  // Ask content script to get selected text and handle the rewrite
+  chrome.tabs.sendMessage(tab.id, {
+    type: 'CONTEXT_MENU_REWRITE',
+    tone,
+  } as ExtensionMessage);
+});
+
+// --- Badge management ---
+function updateBadge(status: ModelStatus) {
+  switch (status) {
+    case 'downloading':
+    case 'loading':
+      chrome.action.setBadgeText({ text: '...' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' }); // amber/orange
+      break;
+    case 'ready':
+      chrome.action.setBadgeText({ text: '' });
+      break;
+    case 'error':
+      chrome.action.setBadgeText({ text: '!' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F4212E' });
+      break;
+    case 'no_webgpu':
+      chrome.action.setBadgeText({ text: '!' });
+      chrome.action.setBadgeBackgroundColor({ color: '#F4212E' });
+      break;
+    default:
+      chrome.action.setBadgeText({ text: '' });
+  }
+}
+
+function updateBadgeProgress(progress: number) {
+  const pct = Math.round(progress);
+  chrome.action.setBadgeText({ text: `${pct}%` });
+  chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
+}
+
+// --- Message handling ---
 chrome.runtime.onMessage.addListener(
   (message: ExtensionMessage, sender, sendResponse) => {
     switch (message.type) {
@@ -17,8 +78,12 @@ chrome.runtime.onMessage.addListener(
         break;
 
       case 'MODEL_STATUS':
-        // Content script asking for current status
-        broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus });
+        if (sender.tab) {
+          // Content script asking for status
+          if (sender.tab.id) {
+            chrome.tabs.sendMessage(sender.tab.id, { type: 'MODEL_STATUS', status: modelStatus });
+          }
+        }
         break;
 
       case 'MODEL_LOAD_REQUEST':
@@ -26,13 +91,9 @@ chrome.runtime.onMessage.addListener(
           loadModel();
         }
         break;
-
-      case 'WEBGPU_CHECK':
-        // WebGPU check is done in the popup/content context
-        break;
     }
 
-    return true; // Keep the message channel open for async
+    return true;
   }
 );
 
@@ -52,20 +113,20 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
-/**
- * Initialize and manage the offscreen document / worker for inference.
- * In Manifest V3, we use an offscreen document to run WebLLM.
- */
+// --- Offscreen document & model loading ---
+let offscreenCreated = false;
+
 async function loadModel() {
   modelStatus = 'loading';
+  updateBadge(modelStatus);
   broadcastStatus();
 
   try {
-    // Create offscreen document for WebLLM inference
     await ensureOffscreenDocument();
     sendToOffscreen({ type: 'MODEL_LOAD_REQUEST' });
   } catch (err) {
     modelStatus = 'error';
+    updateBadge(modelStatus);
     broadcastStatus();
   }
 }
@@ -74,13 +135,9 @@ function forwardToWorker(message: ExtensionMessage) {
   sendToOffscreen(message);
 }
 
-// --- Offscreen document management ---
-let offscreenCreated = false;
-
 async function ensureOffscreenDocument() {
   if (offscreenCreated) return;
 
-  // Check if already exists
   const existingContexts = await (chrome as any).runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
   });
@@ -103,9 +160,7 @@ function sendToOffscreen(message: ExtensionMessage) {
   chrome.runtime.sendMessage(message);
 }
 
-/**
- * Broadcast model status to all X tabs
- */
+// --- Broadcasting ---
 function broadcastStatus() {
   broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus });
 }
@@ -114,9 +169,7 @@ function broadcastToTabs(message: ExtensionMessage) {
   chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
     tabs.forEach((tab) => {
       if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, message).catch(() => {
-          // Tab might not have content script loaded yet
-        });
+        chrome.tabs.sendMessage(tab.id, message).catch(() => {});
       }
     });
   });
@@ -124,14 +177,15 @@ function broadcastToTabs(message: ExtensionMessage) {
 
 // Listen for status updates from offscreen document
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender) => {
-  // Messages from offscreen document (same extension, no tab)
   if (!sender.tab) {
     switch (message.type) {
       case 'MODEL_STATUS':
         modelStatus = message.status;
+        updateBadge(modelStatus);
         broadcastStatus();
         break;
       case 'MODEL_PROGRESS':
+        updateBadgeProgress(message.progress);
         broadcastToTabs(message);
         break;
       case 'REWRITE_RESPONSE':
@@ -142,7 +196,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender) => {
   }
 });
 
-// Auto-load model when extension starts on X
+// Auto-load model when user visits X
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (
     changeInfo.status === 'complete' &&
@@ -150,7 +204,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     (tab.url.includes('x.com') || tab.url.includes('twitter.com'))
   ) {
     if (modelStatus === 'not_loaded') {
-      // Proactively start loading model when user visits X
       loadModel();
     }
   }

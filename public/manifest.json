@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "WriteX — AI Tweet Rewriter",
+  "name": "Write\ud835\udd4f \u2014 Enhance X Post",
   "version": "0.1.0",
-  "description": "Rewrite tweets with AI directly inside X. Local, private, free.",
+  "description": "Enhance your X posts with AI. Local, private, free.",
   "permissions": [
     "storage",
     "activeTab",
-    "offscreen"
+    "offscreen",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://x.com/*",
@@ -23,8 +24,8 @@
         "https://twitter.com/*"
       ],
       "js": ["content.js"],
-      "css": ["content.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "action": {
