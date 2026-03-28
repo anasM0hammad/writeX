@@ -57,9 +57,9 @@ function updateBadge(status: ModelStatus) {
   }
 }
 
-function updateBadgeProgress(_progress: number) {
-  // Keep the badge small — just a dot indicator, percentage shown in popup
-  chrome.action.setBadgeText({ text: '\u2022' });
+function updateBadgeProgress(progress: number) {
+  // Short text: "5" not "5%", "42" not "42%", "100" stays "100"
+  chrome.action.setBadgeText({ text: String(Math.round(progress)) });
   chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
 }
 
