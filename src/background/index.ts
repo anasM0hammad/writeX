@@ -2,6 +2,7 @@ import { ExtensionMessage, ModelStatus, Tone, TONE_PRESETS } from '@shared/types
 
 let modelStatus: ModelStatus = 'not_loaded';
 let offscreenPort: chrome.runtime.Port | null = null;
+let popupPorts: Set<chrome.runtime.Port> = new Set();
 
 // --- Context menu setup ---
 chrome.runtime.onInstalled.addListener(() => {
@@ -58,6 +59,7 @@ function updateBadge(status: ModelStatus) {
 
 function updateBadgeProgress(progress: number) {
   chrome.action.setBadgeText({ text: `${Math.round(progress)}%` });
+  chrome.action.setBadgeTextColor({ color: '#FFFFFF' });
   chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
 }
 
@@ -108,10 +110,12 @@ chrome.runtime.onConnect.addListener((port) => {
           modelStatus = message.status;
           updateBadge(modelStatus);
           broadcastToTabs(message);
+          broadcastToPopups(message);
           break;
         case 'MODEL_PROGRESS':
           updateBadgeProgress(message.progress);
           broadcastToTabs(message);
+          broadcastToPopups(message);
           break;
         case 'REWRITE_RESPONSE':
         case 'REWRITE_ERROR':
@@ -130,6 +134,12 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 
   if (port.name === 'popup') {
+    popupPorts.add(port);
+
+    port.onDisconnect.addListener(() => {
+      popupPorts.delete(port);
+    });
+
     port.onMessage.addListener((message: ExtensionMessage) => {
       if (message.type === 'MODEL_STATUS') {
         port.postMessage({ type: 'MODEL_STATUS', status: modelStatus });
@@ -193,6 +203,12 @@ async function ensureOffscreenDocument() {
 }
 
 // --- Broadcasting ---
+function broadcastToPopups(message: ExtensionMessage) {
+  popupPorts.forEach((port) => {
+    try { port.postMessage(message); } catch { /* popup closed */ }
+  });
+}
+
 function broadcastToTabs(message: ExtensionMessage) {
   chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
     tabs.forEach((tab) => {
