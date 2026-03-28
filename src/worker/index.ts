@@ -7,30 +7,36 @@ import { MODEL_ID, SYSTEM_PROMPT, buildRewritePrompt } from '@shared/constants';
 
 /**
  * Offscreen document script.
+ * Connects to background via a port (no race conditions).
  * Handles WebLLM model loading and inference.
- * Runs in an offscreen document to avoid blocking the service worker.
  */
 
 let engine: any = null;
 let isLoading = false;
 
-// Listen for messages from background
-chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, _sendResponse) => {
-    switch (message.type) {
-      case 'MODEL_LOAD_REQUEST':
-        loadModel();
-        break;
-      case 'REWRITE_REQUEST':
-        handleRewrite(message as RewriteRequest);
-        break;
-    }
-  }
-);
+// Connect to background immediately — this signals "worker is ready"
+const port = chrome.runtime.connect({ name: 'offscreen-worker' });
 
-/**
- * Load the WebLLM model with progress reporting.
- */
+// Listen for messages from background via port
+port.onMessage.addListener((message: ExtensionMessage) => {
+  switch (message.type) {
+    case 'MODEL_LOAD_REQUEST':
+      loadModel();
+      break;
+    case 'REWRITE_REQUEST':
+      handleRewrite(message as RewriteRequest);
+      break;
+  }
+});
+
+function send(message: ExtensionMessage) {
+  port.postMessage(message);
+}
+
+function sendStatus(status: string) {
+  send({ type: 'MODEL_STATUS', status } as ExtensionMessage);
+}
+
 async function loadModel() {
   if (engine || isLoading) return;
   isLoading = true;
@@ -38,7 +44,6 @@ async function loadModel() {
   try {
     sendStatus('downloading');
 
-    // Dynamic import to keep initial bundle small
     const webllm = await import('@mlc-ai/web-llm');
 
     engine = await webllm.CreateMLCEngine(MODEL_ID, {
@@ -46,7 +51,7 @@ async function loadModel() {
         const progress = report.progress ?? 0;
         const text = report.text ?? 'Loading model...';
 
-        chrome.runtime.sendMessage({
+        send({
           type: 'MODEL_PROGRESS',
           progress: progress * 100,
           message: text,
@@ -62,7 +67,7 @@ async function loadModel() {
       sendStatus('no_webgpu');
     } else {
       sendStatus('error');
-      chrome.runtime.sendMessage({
+      send({
         type: 'REWRITE_ERROR',
         error: `Failed to load AI model: ${err?.message || 'Unknown error'}`,
       } as ExtensionMessage);
@@ -72,12 +77,9 @@ async function loadModel() {
   }
 }
 
-/**
- * Run inference to rewrite a tweet.
- */
 async function handleRewrite(request: RewriteRequest) {
   if (!engine) {
-    chrome.runtime.sendMessage({
+    send({
       type: 'REWRITE_ERROR',
       error: 'AI model is not loaded yet. Please wait.',
     } as ExtensionMessage);
@@ -103,17 +105,16 @@ async function handleRewrite(request: RewriteRequest) {
     const rewritten = response.choices?.[0]?.message?.content?.trim() ?? '';
 
     if (!rewritten) {
-      chrome.runtime.sendMessage({
+      send({
         type: 'REWRITE_ERROR',
         error: 'AI returned an empty response. Try again.',
       } as ExtensionMessage);
       return;
     }
 
-    // Clean up any quotes the model might add
     const cleaned = rewritten.replace(/^["']|["']$/g, '');
 
-    chrome.runtime.sendMessage({
+    send({
       type: 'REWRITE_RESPONSE',
       original: request.text,
       rewritten: cleaned,
@@ -121,16 +122,9 @@ async function handleRewrite(request: RewriteRequest) {
     } as ExtensionMessage);
   } catch (err: any) {
     console.error('[WriteX] Inference error:', err);
-    chrome.runtime.sendMessage({
+    send({
       type: 'REWRITE_ERROR',
       error: `Rewrite failed: ${err?.message || 'Unknown error'}`,
     } as ExtensionMessage);
   }
-}
-
-function sendStatus(status: ExtensionMessage['type'] extends 'MODEL_STATUS' ? any : any) {
-  chrome.runtime.sendMessage({
-    type: 'MODEL_STATUS',
-    status,
-  } as ExtensionMessage);
 }
