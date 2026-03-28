@@ -1,82 +1,55 @@
-import { observeTweetBoxes, extractTweetText, replaceTweetText } from './observer';
-import { injectRewriteUI, UIState } from './ui';
-import { Tone, TONE_PRESETS, ExtensionMessage, ModelStatus } from '@shared/types';
-import './styles.css';
+import { Tone, ExtensionMessage, ModelStatus } from '@shared/types';
 
-// Track active UI instances per compose box
-const activeInstances = new Map<HTMLElement, ReturnType<typeof injectRewriteUI>>();
-
-// Current model status
 let modelStatus: ModelStatus = 'not_loaded';
 
-/**
- * Initialize the content script.
- * Sets up DOM observation and message handling.
- */
 function init() {
-  // Listen for messages from background/worker
   chrome.runtime.onMessage.addListener((message: ExtensionMessage) => {
-    handleBackgroundMessage(message);
-  });
+    switch (message.type) {
+      case 'CONTEXT_MENU_REWRITE':
+        handleContextMenuRewrite(message.tone);
+        break;
 
-  // Check initial model status
-  chrome.runtime.sendMessage({ type: 'MODEL_STATUS' } as ExtensionMessage);
+      case 'REWRITE_RESPONSE':
+        replaceActiveText(message.rewritten);
+        break;
 
-  // Start observing for tweet compose boxes
-  observeTweetBoxes((composeBox) => {
-    if (activeInstances.has(composeBox)) return;
+      case 'REWRITE_ERROR':
+        console.warn('[WriteX]', message.error);
+        break;
 
-    const ui = injectRewriteUI(composeBox, {
-      onRewrite: (tone: Tone) => handleRewrite(composeBox, tone),
-      onReplace: (text: string) => handleReplace(composeBox, text),
-      onRetry: (tone: Tone) => handleRewrite(composeBox, tone),
-      onDismiss: () => handleDismiss(composeBox),
-    });
-
-    activeInstances.set(composeBox, ui);
-
-    // If model isn't ready, show status
-    if (modelStatus === 'not_loaded') {
-      ui.update({ type: 'idle' });
-    } else if (modelStatus === 'downloading' || modelStatus === 'loading') {
-      ui.update({ type: 'model_loading', message: 'AI model is loading...' });
+      case 'MODEL_STATUS':
+        modelStatus = message.status;
+        // If model just became ready and we have a pending rewrite, fire it
+        if (message.status === 'ready' && pendingRewrite) {
+          const { text, tone } = pendingRewrite;
+          pendingRewrite = null;
+          sendRewriteRequest(text, tone);
+        }
+        break;
     }
   });
+
+  // Get initial model status
+  chrome.runtime.sendMessage({ type: 'MODEL_STATUS' } as ExtensionMessage);
 }
 
-/**
- * Handle rewrite request from UI
- */
-async function handleRewrite(composeBox: HTMLElement, tone: Tone) {
-  const ui = activeInstances.get(composeBox);
-  if (!ui) return;
+let pendingRewrite: { text: string; tone: Tone } | null = null;
 
-  const text = extractTweetText(composeBox);
-  if (!text) {
-    ui.update({ type: 'error', message: 'Write something first, then hit Rewrite.' });
-    return;
-  }
-
-  if (modelStatus === 'no_webgpu') {
-    ui.update({
-      type: 'error',
-      message: 'WebGPU is not supported in your browser. Please use Chrome 113+.',
-    });
-    return;
-  }
+function handleContextMenuRewrite(tone: Tone) {
+  const text = getActiveEditableText();
+  if (!text) return;
 
   if (modelStatus !== 'ready') {
-    // Trigger model load and queue the rewrite
-    ui.update({ type: 'model_loading', message: 'Loading AI model for first use...' });
+    // Queue the rewrite and trigger model load
+    pendingRewrite = { text, tone };
     chrome.runtime.sendMessage({ type: 'MODEL_LOAD_REQUEST' } as ExtensionMessage);
-    // Store pending rewrite
-    composeBox.setAttribute('data-writex-pending-tone', tone);
     return;
   }
 
-  // Model is ready, do the rewrite
-  ui.update({ type: 'loading' });
+  sendRewriteRequest(text, tone);
+}
 
+function sendRewriteRequest(text: string, tone: Tone) {
   chrome.runtime.sendMessage({
     type: 'REWRITE_REQUEST',
     text,
@@ -84,82 +57,54 @@ async function handleRewrite(composeBox: HTMLElement, tone: Tone) {
   } as ExtensionMessage);
 }
 
-/**
- * Handle replace action
- */
-function handleReplace(composeBox: HTMLElement, text: string) {
-  replaceTweetText(composeBox, text);
-  const ui = activeInstances.get(composeBox);
-  if (ui) {
-    ui.update({ type: 'idle' });
+function getActiveEditableText(): string {
+  const active = document.activeElement;
+  if (!active) return '';
+
+  // X uses contenteditable divs with role="textbox"
+  const textbox = active.closest('[role="textbox"]') as HTMLElement
+    ?? (active.querySelector('[role="textbox"]') as HTMLElement);
+
+  if (textbox) {
+    return textbox.innerText?.trim() ?? '';
+  }
+
+  // Fallback: standard textarea/input
+  if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) {
+    return active.value.trim();
+  }
+
+  return '';
+}
+
+function replaceActiveText(newText: string) {
+  const active = document.activeElement;
+  if (!active) return;
+
+  const textbox = active.closest('[role="textbox"]') as HTMLElement
+    ?? (active.querySelector('[role="textbox"]') as HTMLElement);
+
+  if (textbox) {
+    textbox.focus();
+
+    // Select all existing text
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(textbox);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    // Use insertText to work with X's React-managed state
+    document.execCommand('insertText', false, newText);
+    textbox.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+
+  // Fallback: standard textarea/input
+  if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) {
+    active.value = newText;
+    active.dispatchEvent(new Event('input', { bubbles: true }));
   }
 }
 
-/**
- * Handle dismiss action
- */
-function handleDismiss(composeBox: HTMLElement) {
-  const ui = activeInstances.get(composeBox);
-  if (ui) {
-    ui.update({ type: 'idle' });
-  }
-}
-
-/**
- * Handle messages from background script
- */
-function handleBackgroundMessage(message: ExtensionMessage) {
-  switch (message.type) {
-    case 'REWRITE_RESPONSE': {
-      // Update all active UIs with the result
-      activeInstances.forEach((ui) => {
-        ui.update({ type: 'result', text: message.rewritten });
-      });
-      break;
-    }
-
-    case 'REWRITE_ERROR': {
-      activeInstances.forEach((ui) => {
-        ui.update({ type: 'error', message: message.error });
-      });
-      break;
-    }
-
-    case 'MODEL_STATUS': {
-      modelStatus = message.status;
-      activeInstances.forEach((ui, composeBox) => {
-        if (message.status === 'ready') {
-          // Check if there's a pending rewrite
-          const pendingTone = composeBox.getAttribute('data-writex-pending-tone') as Tone | null;
-          if (pendingTone) {
-            composeBox.removeAttribute('data-writex-pending-tone');
-            handleRewrite(composeBox, pendingTone);
-          } else {
-            ui.update({ type: 'idle' });
-          }
-        } else if (message.status === 'no_webgpu') {
-          ui.update({
-            type: 'error',
-            message: 'WebGPU not supported. Please use Chrome 113+ with WebGPU enabled.',
-          });
-        } else if (message.status === 'downloading' || message.status === 'loading') {
-          ui.update({ type: 'model_loading', message: 'Loading AI model...' });
-        }
-      });
-      break;
-    }
-
-    case 'MODEL_PROGRESS': {
-      activeInstances.forEach((ui) => {
-        ui.update({
-          type: 'model_loading',
-          message: message.message || `Downloading model... ${Math.round(message.progress)}%`,
-        });
-      });
-      break;
-    }
-  }
-}
-
-// Boot
 init();

@@ -38,7 +38,8 @@ export type MessageType =
   | 'MODEL_LOAD_REQUEST'
   | 'MODEL_PROGRESS'
   | 'WEBGPU_CHECK'
-  | 'WEBGPU_RESULT';
+  | 'WEBGPU_RESULT'
+  | 'CONTEXT_MENU_REWRITE';
 
 export interface RewriteRequest {
   type: 'REWRITE_REQUEST';
@@ -82,6 +83,11 @@ export interface WebGPUResult {
   supported: boolean;
 }
 
+export interface ContextMenuRewrite {
+  type: 'CONTEXT_MENU_REWRITE';
+  tone: Tone;
+}
+
 export type ExtensionMessage =
   | RewriteRequest
   | RewriteResponse
@@ -90,7 +96,8 @@ export type ExtensionMessage =
   | ModelLoadRequest
   | ModelProgress
   | WebGPUCheck
-  | WebGPUResult;
+  | WebGPUResult
+  | ContextMenuRewrite;
 
 // Model states
 export type ModelStatus =

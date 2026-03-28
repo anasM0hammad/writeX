@@ -74,7 +74,7 @@ function updateModelStatus(status: ModelStatus) {
       modelBadge.className = 'wx-status-badge wx-badge-success';
       btnLoadModel.style.display = 'none';
       progressContainer.style.display = 'none';
-      modelHint.textContent = 'AI model loaded and ready. Go write some tweets!';
+      modelHint.textContent = 'AI model loaded and ready. Right-click in any post box to enhance!';
       break;
 
     case 'error':
