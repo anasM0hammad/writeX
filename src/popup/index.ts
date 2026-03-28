@@ -103,16 +103,9 @@ const port = chrome.runtime.connect({ name: 'popup' });
 port.onMessage.addListener((message: ExtensionMessage) => {
   if (message.type === 'MODEL_STATUS') {
     updateModelStatus(message.status);
-  }
-});
-
-// Also listen for broadcast messages (progress updates)
-chrome.runtime.onMessage.addListener((message: ExtensionMessage) => {
-  if (message.type === 'MODEL_PROGRESS') {
+  } else if (message.type === 'MODEL_PROGRESS') {
     progressFill.style.width = `${message.progress}%`;
     progressText.textContent = `${Math.round(message.progress)}%`;
-  } else if (message.type === 'MODEL_STATUS') {
-    updateModelStatus(message.status);
   }
 });
 
