@@ -1,10 +1,10 @@
 import { ExtensionMessage, ModelStatus, Tone, TONE_PRESETS } from '@shared/types';
 
 let modelStatus: ModelStatus = 'not_loaded';
+let offscreenPort: chrome.runtime.Port | null = null;
 
 // --- Context menu setup ---
 chrome.runtime.onInstalled.addListener(() => {
-  // Parent menu
   chrome.contextMenus.create({
     id: 'writex-enhance',
     title: 'Enhance Post',
@@ -12,7 +12,6 @@ chrome.runtime.onInstalled.addListener(() => {
     documentUrlPatterns: ['https://x.com/*', 'https://twitter.com/*'],
   });
 
-  // Tone sub-menus
   TONE_PRESETS.forEach((preset) => {
     chrome.contextMenus.create({
       id: `writex-tone-${preset.id}`,
@@ -24,15 +23,12 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!tab?.id) return;
   const menuId = info.menuItemId as string;
   if (!menuId.startsWith('writex-tone-')) return;
 
   const tone = menuId.replace('writex-tone-', '') as Tone;
-
-  // Ask content script to get selected text and handle the rewrite
   chrome.tabs.sendMessage(tab.id, {
     type: 'CONTEXT_MENU_REWRITE',
     tone,
@@ -45,15 +41,12 @@ function updateBadge(status: ModelStatus) {
     case 'downloading':
     case 'loading':
       chrome.action.setBadgeText({ text: '...' });
-      chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' }); // amber/orange
+      chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
       break;
     case 'ready':
       chrome.action.setBadgeText({ text: '' });
       break;
     case 'error':
-      chrome.action.setBadgeText({ text: '!' });
-      chrome.action.setBadgeBackgroundColor({ color: '#F4212E' });
-      break;
     case 'no_webgpu':
       chrome.action.setBadgeText({ text: '!' });
       chrome.action.setBadgeBackgroundColor({ color: '#F4212E' });
@@ -64,25 +57,28 @@ function updateBadge(status: ModelStatus) {
 }
 
 function updateBadgeProgress(progress: number) {
-  const pct = Math.round(progress);
-  chrome.action.setBadgeText({ text: `${pct}%` });
+  chrome.action.setBadgeText({ text: `${Math.round(progress)}%` });
   chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
 }
 
-// --- Message handling ---
+// --- Message handling from content scripts (have sender.tab) ---
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, sender, sendResponse) => {
+  (message: ExtensionMessage, sender, _sendResponse) => {
+    // Only handle messages from content scripts (tabs)
+    if (!sender.tab) return;
+
     switch (message.type) {
       case 'REWRITE_REQUEST':
-        forwardToWorker(message);
+        sendToWorker(message);
         break;
 
       case 'MODEL_STATUS':
-        if (sender.tab) {
-          // Content script asking for status
-          if (sender.tab.id) {
-            chrome.tabs.sendMessage(sender.tab.id, { type: 'MODEL_STATUS', status: modelStatus });
-          }
+        // Content script asking for current status
+        if (sender.tab.id) {
+          chrome.tabs.sendMessage(sender.tab.id, {
+            type: 'MODEL_STATUS',
+            status: modelStatus,
+          } as ExtensionMessage);
         }
         break;
 
@@ -97,8 +93,42 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-// Handle connections from popup
+// --- Offscreen worker communication via ports ---
+// The offscreen document connects via chrome.runtime.connect when it's ready.
+// This solves the race condition — we know the worker is loaded when it connects.
+let pendingWorkerMessages: ExtensionMessage[] = [];
+
 chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'offscreen-worker') {
+    offscreenPort = port;
+
+    port.onMessage.addListener((message: ExtensionMessage) => {
+      switch (message.type) {
+        case 'MODEL_STATUS':
+          modelStatus = message.status;
+          updateBadge(modelStatus);
+          broadcastToTabs(message);
+          break;
+        case 'MODEL_PROGRESS':
+          updateBadgeProgress(message.progress);
+          broadcastToTabs(message);
+          break;
+        case 'REWRITE_RESPONSE':
+        case 'REWRITE_ERROR':
+          broadcastToTabs(message);
+          break;
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      offscreenPort = null;
+    });
+
+    // Flush any messages that were queued before the worker connected
+    pendingWorkerMessages.forEach((msg) => port.postMessage(msg));
+    pendingWorkerMessages = [];
+  }
+
   if (port.name === 'popup') {
     port.onMessage.addListener((message: ExtensionMessage) => {
       if (message.type === 'MODEL_STATUS') {
@@ -119,20 +149,26 @@ let offscreenCreated = false;
 async function loadModel() {
   modelStatus = 'loading';
   updateBadge(modelStatus);
-  broadcastStatus();
+  broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus });
 
   try {
     await ensureOffscreenDocument();
-    sendToOffscreen({ type: 'MODEL_LOAD_REQUEST' });
+    sendToWorker({ type: 'MODEL_LOAD_REQUEST' });
   } catch (err) {
+    console.error('[WriteX] Failed to create offscreen document:', err);
     modelStatus = 'error';
     updateBadge(modelStatus);
-    broadcastStatus();
+    broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus });
   }
 }
 
-function forwardToWorker(message: ExtensionMessage) {
-  sendToOffscreen(message);
+function sendToWorker(message: ExtensionMessage) {
+  if (offscreenPort) {
+    offscreenPort.postMessage(message);
+  } else {
+    // Queue message — will be sent when worker connects
+    pendingWorkerMessages.push(message);
+  }
 }
 
 async function ensureOffscreenDocument() {
@@ -156,15 +192,7 @@ async function ensureOffscreenDocument() {
   offscreenCreated = true;
 }
 
-function sendToOffscreen(message: ExtensionMessage) {
-  chrome.runtime.sendMessage(message);
-}
-
 // --- Broadcasting ---
-function broadcastStatus() {
-  broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus });
-}
-
 function broadcastToTabs(message: ExtensionMessage) {
   chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
     tabs.forEach((tab) => {
@@ -174,27 +202,6 @@ function broadcastToTabs(message: ExtensionMessage) {
     });
   });
 }
-
-// Listen for status updates from offscreen document
-chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender) => {
-  if (!sender.tab) {
-    switch (message.type) {
-      case 'MODEL_STATUS':
-        modelStatus = message.status;
-        updateBadge(modelStatus);
-        broadcastStatus();
-        break;
-      case 'MODEL_PROGRESS':
-        updateBadgeProgress(message.progress);
-        broadcastToTabs(message);
-        break;
-      case 'REWRITE_RESPONSE':
-      case 'REWRITE_ERROR':
-        broadcastToTabs(message);
-        break;
-    }
-  }
-});
 
 // Auto-load model when user visits X
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
