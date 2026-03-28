@@ -58,8 +58,8 @@ function updateBadge(status: ModelStatus) {
 }
 
 function updateBadgeProgress(progress: number) {
-  // Short text: "5" not "5%", "42" not "42%", "100" stays "100"
-  chrome.action.setBadgeText({ text: String(Math.round(progress)) });
+  chrome.action.setBadgeText({ text: `${Math.round(progress)}%` });
+  chrome.action.setBadgeTextColor({ color: '#FFFFFF' });
   chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
 }
 
