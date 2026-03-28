@@ -1,0 +1,224 @@
+/* ============================================
+   WriteX — Content Script Styles
+   Dark theme matching X's design language
+   ============================================ */
+
+.writex-container {
+  position: relative;
+  width: 100%;
+  padding: 8px 0 4px;
+  font-family: "TwitterChirp", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  z-index: 10;
+}
+
+/* --- Trigger Bar --- */
+.writex-trigger-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+/* --- Rewrite Button --- */
+.writex-btn-rewrite {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #1d9bf0 0%, #0d8de0 100%);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 1px 3px rgba(29, 155, 240, 0.25);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.writex-btn-rewrite:hover {
+  background: linear-gradient(135deg, #1a8cd8 0%, #0a7acc 100%);
+  box-shadow: 0 2px 8px rgba(29, 155, 240, 0.4);
+  transform: translateY(-0.5px);
+}
+
+.writex-btn-rewrite:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(29, 155, 240, 0.2);
+}
+
+.writex-btn-rewrite[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.writex-btn-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* --- Tone Selector --- */
+.writex-tone-selector {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(39, 44, 48, 0.8);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+}
+
+.writex-tone-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: #71767b;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.writex-tone-btn:hover {
+  background: rgba(29, 155, 240, 0.1);
+  color: #1d9bf0;
+}
+
+.writex-tone-active {
+  background: rgba(29, 155, 240, 0.15) !important;
+  color: #1d9bf0 !important;
+  font-weight: 600;
+}
+
+/* --- Result Panel --- */
+.writex-result-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: #16181c;
+  border: 1px solid #2f3336;
+  border-radius: 12px;
+  animation: writex-slideIn 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+@keyframes writex-slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.writex-result-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #e7e9ea;
+  word-break: break-word;
+  margin-bottom: 10px;
+}
+
+.writex-result-text.writex-error {
+  color: #f4212e;
+  font-size: 13px;
+}
+
+/* --- Result Actions --- */
+.writex-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.writex-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.writex-btn-replace {
+  background: #eff3f4;
+  color: #0f1419;
+}
+
+.writex-btn-replace:hover {
+  background: #d7dbdc;
+}
+
+.writex-btn-retry {
+  background: transparent;
+  color: #71767b;
+  border: 1px solid #2f3336;
+}
+
+.writex-btn-retry:hover {
+  background: rgba(29, 155, 240, 0.1);
+  color: #1d9bf0;
+  border-color: rgba(29, 155, 240, 0.3);
+}
+
+.writex-btn-dismiss {
+  background: transparent;
+  color: #71767b;
+  padding: 6px 10px;
+  margin-left: auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.writex-btn-dismiss:hover {
+  color: #f4212e;
+  background: rgba(244, 33, 46, 0.1);
+}
+
+/* --- Loader --- */
+.writex-loader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  animation: writex-fadeIn 0.15s ease;
+}
+
+@keyframes writex-fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.writex-loader-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(29, 155, 240, 0.2);
+  border-top-color: #1d9bf0;
+  border-radius: 50%;
+  animation: writex-spin 0.6s linear infinite;
+}
+
+@keyframes writex-spin {
+  to { transform: rotate(360deg); }
+}
+
+.writex-loader-text {
+  font-size: 13px;
+  color: #71767b;
+}
