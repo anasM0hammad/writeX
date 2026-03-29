@@ -1,40 +1,32 @@
 import {
-  ExtensionMessage,
-  RewriteRequest,
   TONE_PRESETS,
 } from '@shared/types';
 import { MODEL_ID, SYSTEM_PROMPT, buildRewritePrompt } from '@shared/constants';
 
 /**
- * Offscreen document script.
- * Connects to background via a port (no race conditions).
- * Handles WebLLM model loading and inference.
+ * Web Worker for WebLLM inference.
+ * Runs in the content script's page context (has WebGPU access).
+ * Communicates with content script via postMessage.
  */
 
 let engine: any = null;
 let isLoading = false;
 
-// Connect to background immediately — this signals "worker is ready"
-const port = chrome.runtime.connect({ name: 'offscreen-worker' });
+self.onmessage = (e: MessageEvent) => {
+  const { type } = e.data;
 
-// Listen for messages from background via port
-port.onMessage.addListener((message: ExtensionMessage) => {
-  switch (message.type) {
+  switch (type) {
     case 'MODEL_LOAD_REQUEST':
       loadModel();
       break;
     case 'REWRITE_REQUEST':
-      handleRewrite(message as RewriteRequest);
+      handleRewrite(e.data);
       break;
   }
-});
+};
 
-function send(message: ExtensionMessage) {
-  port.postMessage(message);
-}
-
-function sendStatus(status: string) {
-  send({ type: 'MODEL_STATUS', status } as ExtensionMessage);
+function send(message: any) {
+  self.postMessage(message);
 }
 
 async function loadModel() {
@@ -42,7 +34,7 @@ async function loadModel() {
   isLoading = true;
 
   try {
-    sendStatus('downloading');
+    send({ type: 'MODEL_STATUS', status: 'downloading' });
 
     const webllm = await import('@mlc-ai/web-llm');
 
@@ -55,34 +47,34 @@ async function loadModel() {
           type: 'MODEL_PROGRESS',
           progress: progress * 100,
           message: text,
-        } as ExtensionMessage);
+        });
       },
     });
 
-    sendStatus('ready');
+    send({ type: 'MODEL_STATUS', status: 'ready' });
   } catch (err: any) {
-    console.error('[WriteX] Model load error:', err);
+    console.error('[WriteX Worker] Model load error:', err);
 
-    if (err?.message?.includes('WebGPU')) {
-      sendStatus('no_webgpu');
+    if (err?.message?.includes('WebGPU') || err?.message?.includes('gpu')) {
+      send({ type: 'MODEL_STATUS', status: 'no_webgpu' });
     } else {
-      sendStatus('error');
+      send({ type: 'MODEL_STATUS', status: 'error' });
       send({
         type: 'REWRITE_ERROR',
         error: `Failed to load AI model: ${err?.message || 'Unknown error'}`,
-      } as ExtensionMessage);
+      });
     }
   } finally {
     isLoading = false;
   }
 }
 
-async function handleRewrite(request: RewriteRequest) {
+async function handleRewrite(request: { text: string; tone: string }) {
   if (!engine) {
     send({
       type: 'REWRITE_ERROR',
       error: 'AI model is not loaded yet. Please wait.',
-    } as ExtensionMessage);
+    });
     return;
   }
 
@@ -108,7 +100,7 @@ async function handleRewrite(request: RewriteRequest) {
       send({
         type: 'REWRITE_ERROR',
         error: 'AI returned an empty response. Try again.',
-      } as ExtensionMessage);
+      });
       return;
     }
 
@@ -119,12 +111,12 @@ async function handleRewrite(request: RewriteRequest) {
       original: request.text,
       rewritten: cleaned,
       tone: request.tone,
-    } as ExtensionMessage);
+    });
   } catch (err: any) {
-    console.error('[WriteX] Inference error:', err);
+    console.error('[WriteX Worker] Inference error:', err);
     send({
       type: 'REWRITE_ERROR',
       error: `Rewrite failed: ${err?.message || 'Unknown error'}`,
-    } as ExtensionMessage);
+    });
   }
 }

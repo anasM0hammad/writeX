@@ -1,5 +1,5 @@
 import { observeComposeBoxes, extractPostText, replacePostText } from './observer';
-import { injectRewriteUI, UIState } from './ui';
+import { injectRewriteUI } from './ui';
 import { Tone, ExtensionMessage, ModelStatus } from '@shared/types';
 import './styles.css';
 
@@ -8,15 +8,15 @@ const activeInstances = new Map<HTMLElement, ReturnType<typeof injectRewriteUI>>
 
 let modelStatus: ModelStatus = 'not_loaded';
 let pendingRewrite: { composeBox: HTMLElement; tone: Tone } | null = null;
+let worker: Worker | null = null;
 
 function init() {
-  // Listen for messages from background
+  // Listen for messages from background (context menu clicks, status queries)
   chrome.runtime.onMessage.addListener((message: ExtensionMessage) => {
-    handleMessage(message);
+    if (message.type === 'CONTEXT_MENU_REWRITE') {
+      handleContextMenuRewrite(message.tone);
+    }
   });
-
-  // Get initial model status
-  chrome.runtime.sendMessage({ type: 'MODEL_STATUS' } as ExtensionMessage);
 
   // Observe for compose boxes and inject inline UI
   observeComposeBoxes((composeBox) => {
@@ -38,11 +38,105 @@ function init() {
       ui.update({ type: 'model_loading', message: 'AI model is loading...' });
     }
   });
+
+  // Start loading the model proactively
+  initWorkerAndLoadModel();
 }
 
-/**
- * Shared rewrite logic — used by both inline UI clicks and context menu.
- */
+// --- Web Worker lifecycle ---
+
+function initWorkerAndLoadModel() {
+  if (worker) return;
+
+  try {
+    const workerUrl = chrome.runtime.getURL('worker.js');
+    worker = new Worker(workerUrl, { type: 'module' });
+
+    worker.onmessage = (e: MessageEvent) => {
+      handleWorkerMessage(e.data);
+    };
+
+    worker.onerror = (e) => {
+      console.error('[WriteX] Worker error:', e);
+      setModelStatus('error');
+    };
+
+    // Tell worker to start loading the model
+    worker.postMessage({ type: 'MODEL_LOAD_REQUEST' });
+  } catch (err) {
+    console.error('[WriteX] Failed to create worker:', err);
+    setModelStatus('error');
+  }
+}
+
+function handleWorkerMessage(message: any) {
+  switch (message.type) {
+    case 'MODEL_STATUS':
+      setModelStatus(message.status);
+      break;
+
+    case 'MODEL_PROGRESS':
+      // Update badge via background
+      chrome.runtime.sendMessage({
+        type: 'MODEL_PROGRESS',
+        progress: message.progress,
+        message: message.message,
+      } as ExtensionMessage).catch(() => {});
+
+      // Update inline UIs
+      activeInstances.forEach((ui) => {
+        ui.update({
+          type: 'model_loading',
+          message: message.message || `Downloading model... ${Math.round(message.progress)}%`,
+        });
+      });
+      break;
+
+    case 'REWRITE_RESPONSE':
+      activeInstances.forEach((ui) => {
+        ui.update({ type: 'result', text: message.rewritten });
+      });
+      break;
+
+    case 'REWRITE_ERROR':
+      activeInstances.forEach((ui) => {
+        ui.update({ type: 'error', message: message.error });
+      });
+      break;
+  }
+}
+
+function setModelStatus(status: ModelStatus) {
+  modelStatus = status;
+
+  // Notify background for badge updates
+  chrome.runtime.sendMessage({
+    type: 'MODEL_STATUS',
+    status,
+  } as ExtensionMessage).catch(() => {});
+
+  if (status === 'ready' && pendingRewrite) {
+    const { composeBox, tone } = pendingRewrite;
+    pendingRewrite = null;
+    requestRewrite(composeBox, tone);
+    return;
+  }
+
+  activeInstances.forEach((ui) => {
+    if (status === 'ready') {
+      ui.update({ type: 'idle' });
+    } else if (status === 'no_webgpu') {
+      ui.update({ type: 'error', message: 'WebGPU not supported. Use Chrome 113+.' });
+    } else if (status === 'downloading' || status === 'loading') {
+      ui.update({ type: 'model_loading', message: 'Loading AI model...' });
+    } else if (status === 'error') {
+      ui.update({ type: 'error', message: 'Failed to load AI model.' });
+    }
+  });
+}
+
+// --- Rewrite logic ---
+
 function requestRewrite(composeBox: HTMLElement, tone: Tone) {
   const ui = activeInstances.get(composeBox);
   const text = extractPostText(composeBox);
@@ -60,23 +154,15 @@ function requestRewrite(composeBox: HTMLElement, tone: Tone) {
   if (modelStatus !== 'ready') {
     pendingRewrite = { composeBox, tone };
     ui?.update({ type: 'model_loading', message: 'Loading AI model for first use...' });
-    chrome.runtime.sendMessage({ type: 'MODEL_LOAD_REQUEST' } as ExtensionMessage);
+    initWorkerAndLoadModel();
     return;
   }
 
   ui?.update({ type: 'loading' });
-  chrome.runtime.sendMessage({
-    type: 'REWRITE_REQUEST',
-    text,
-    tone,
-  } as ExtensionMessage);
+  worker?.postMessage({ type: 'REWRITE_REQUEST', text, tone });
 }
 
-/**
- * Handle context menu rewrite — find the focused compose box and trigger rewrite.
- */
 function handleContextMenuRewrite(tone: Tone) {
-  // Find the compose box that contains the currently focused element
   const active = document.activeElement as HTMLElement | null;
   if (!active) return;
 
@@ -87,70 +173,18 @@ function handleContextMenuRewrite(tone: Tone) {
     }
   }
 
-  // Fallback: try using the active element to get text directly
+  // Fallback: use active element directly
   const textbox = active.closest('[role="textbox"]') as HTMLElement;
   if (textbox) {
     const text = textbox.innerText?.trim();
     if (!text) return;
 
     if (modelStatus !== 'ready') {
-      chrome.runtime.sendMessage({ type: 'MODEL_LOAD_REQUEST' } as ExtensionMessage);
+      initWorkerAndLoadModel();
       return;
     }
 
-    chrome.runtime.sendMessage({
-      type: 'REWRITE_REQUEST',
-      text,
-      tone,
-    } as ExtensionMessage);
-  }
-}
-
-function handleMessage(message: ExtensionMessage) {
-  switch (message.type) {
-    case 'CONTEXT_MENU_REWRITE':
-      handleContextMenuRewrite(message.tone);
-      break;
-
-    case 'REWRITE_RESPONSE':
-      activeInstances.forEach((ui) => {
-        ui.update({ type: 'result', text: message.rewritten });
-      });
-      break;
-
-    case 'REWRITE_ERROR':
-      activeInstances.forEach((ui) => {
-        ui.update({ type: 'error', message: message.error });
-      });
-      break;
-
-    case 'MODEL_STATUS':
-      modelStatus = message.status;
-      if (message.status === 'ready' && pendingRewrite) {
-        const { composeBox, tone } = pendingRewrite;
-        pendingRewrite = null;
-        requestRewrite(composeBox, tone);
-      } else {
-        activeInstances.forEach((ui) => {
-          if (message.status === 'ready') {
-            ui.update({ type: 'idle' });
-          } else if (message.status === 'no_webgpu') {
-            ui.update({ type: 'error', message: 'WebGPU not supported. Use Chrome 113+.' });
-          } else if (message.status === 'downloading' || message.status === 'loading') {
-            ui.update({ type: 'model_loading', message: 'Loading AI model...' });
-          }
-        });
-      }
-      break;
-
-    case 'MODEL_PROGRESS':
-      activeInstances.forEach((ui) => {
-        ui.update({
-          type: 'model_loading',
-          message: message.message || `Downloading model... ${Math.round(message.progress)}%`,
-        });
-      });
-      break;
+    worker?.postMessage({ type: 'REWRITE_REQUEST', text, tone });
   }
 }
 
