@@ -8,30 +8,50 @@ import { MODEL_ID, SYSTEM_PROMPT, buildRewritePrompt } from '@shared/constants';
 /**
  * Offscreen document script.
  * Runs inside offscreen.html which has full DOM + WebGPU access.
- * Connects to background via port — no race conditions.
+ * Connects to background via port. Reconnects if service worker restarts.
  */
 
 let engine: any = null;
 let isLoading = false;
+let port: chrome.runtime.Port | null = null;
 
-// Connect to background — this is the "I'm ready" signal.
-// Background queues any messages sent before this connects.
-const port = chrome.runtime.connect({ name: 'offscreen-worker' });
+function connectPort() {
+  port = chrome.runtime.connect({ name: 'offscreen-worker' });
 
-port.onMessage.addListener((message: ExtensionMessage) => {
-  switch (message.type) {
-    case 'MODEL_LOAD_REQUEST':
-      loadModel();
-      break;
-    case 'REWRITE_REQUEST':
-      handleRewrite(message as RewriteRequest);
-      break;
+  port.onMessage.addListener((message: ExtensionMessage) => {
+    switch (message.type) {
+      case 'MODEL_LOAD_REQUEST':
+        loadModel();
+        break;
+      case 'REWRITE_REQUEST':
+        handleRewrite(message as RewriteRequest);
+        break;
+      case 'MODEL_STATUS_CHECK':
+        // Background is asking if model is already loaded
+        if (engine) {
+          send({ type: 'MODEL_STATUS', status: 'ready' } as ExtensionMessage);
+        }
+        break;
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    port = null;
+    // Service worker died — reconnect after a short delay
+    setTimeout(connectPort, 500);
+  });
+
+  // If model is already loaded, notify the new background immediately
+  if (engine) {
+    send({ type: 'MODEL_STATUS', status: 'ready' } as ExtensionMessage);
   }
-});
+}
+
+connectPort();
 
 function send(message: ExtensionMessage) {
   try {
-    port.postMessage(message);
+    port?.postMessage(message);
   } catch (err) {
     console.error('[WriteX Worker] Failed to send message:', err);
   }
@@ -44,8 +64,6 @@ async function loadModel() {
   try {
     send({ type: 'MODEL_STATUS', status: 'downloading' } as ExtensionMessage);
 
-    // WebLLM is bundled by webpack — NOT a dynamic import.
-    // This avoids chunk resolution issues in the offscreen document.
     const webllm = await import('@mlc-ai/web-llm');
 
     engine = await webllm.CreateMLCEngine(MODEL_ID, {

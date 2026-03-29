@@ -6,6 +6,20 @@ let popupPorts: Set<chrome.runtime.Port> = new Set();
 let pendingWorkerMessages: ExtensionMessage[] = [];
 let offscreenCreated = false;
 
+// ─── Restore persisted model status on service worker startup ───
+
+chrome.storage.local.get('modelStatus', (result) => {
+  if (result.modelStatus && result.modelStatus !== modelStatus) {
+    modelStatus = result.modelStatus;
+    updateBadge(modelStatus);
+  }
+});
+
+function persistStatus(status: ModelStatus) {
+  modelStatus = status;
+  chrome.storage.local.set({ modelStatus: status });
+}
+
 // ─── Context menu ───
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -104,7 +118,7 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onMessage.addListener((message: ExtensionMessage) => {
       switch (message.type) {
         case 'MODEL_STATUS':
-          modelStatus = message.status;
+          persistStatus(message.status);
           updateBadge(modelStatus);
           broadcastToTabs(message);
           broadcastToPopups(message);
@@ -126,13 +140,11 @@ chrome.runtime.onConnect.addListener((port) => {
     port.onDisconnect.addListener(() => {
       offscreenPort = null;
       offscreenCreated = false;
-      // If model was loading, mark as error
-      if (modelStatus === 'downloading' || modelStatus === 'loading') {
-        modelStatus = 'error';
-        updateBadge(modelStatus);
-        broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
-        broadcastToPopups({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
-      }
+      // Offscreen document died — model is gone
+      persistStatus('not_loaded');
+      updateBadge(modelStatus);
+      broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
+      broadcastToPopups({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
     });
   }
 
@@ -159,7 +171,7 @@ chrome.runtime.onConnect.addListener((port) => {
 function triggerModelLoad() {
   if (modelStatus !== 'not_loaded' && modelStatus !== 'error') return;
 
-  modelStatus = 'loading';
+  persistStatus('loading');
   updateBadge(modelStatus);
   broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
   broadcastToPopups({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
@@ -173,7 +185,7 @@ async function loadModel() {
     sendToWorker({ type: 'MODEL_LOAD_REQUEST' } as ExtensionMessage);
   } catch (err) {
     console.error('[WriteX] Failed to create offscreen document:', err);
-    modelStatus = 'error';
+    persistStatus('error');
     updateBadge(modelStatus);
     broadcastToTabs({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
     broadcastToPopups({ type: 'MODEL_STATUS', status: modelStatus } as ExtensionMessage);
@@ -213,6 +225,17 @@ async function ensureOffscreenDocument() {
   offscreenCreated = true;
 }
 
+async function closeOffscreenDocument() {
+  if (!offscreenCreated) return;
+  try {
+    await (chrome as any).offscreen.closeDocument();
+  } catch {
+    // Already closed
+  }
+  offscreenCreated = false;
+  offscreenPort = null;
+}
+
 // ─── Broadcasting ───
 
 function broadcastToPopups(message: ExtensionMessage) {
@@ -231,14 +254,33 @@ function broadcastToTabs(message: ExtensionMessage) {
   });
 }
 
-// ─── Auto-load when user visits X ───
+// ─── Auto-load when user visits X (only if model not loaded) ───
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (
     changeInfo.status === 'complete' &&
     tab.url &&
     (tab.url.includes('x.com') || tab.url.includes('twitter.com'))
   ) {
+    // If service worker restarted and status was restored as 'ready',
+    // verify the offscreen doc is still alive by ensuring it exists
+    if (modelStatus === 'ready') {
+      ensureOffscreenDocument();
+      return;
+    }
     triggerModelLoad();
   }
+});
+
+// ─── Unload model when last X tab is closed ───
+
+chrome.tabs.onRemoved.addListener(() => {
+  chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
+    if (tabs.length === 0) {
+      // No X tabs remaining — close offscreen document to free memory
+      closeOffscreenDocument();
+      persistStatus('not_loaded');
+      updateBadge(modelStatus);
+    }
+  });
 });
