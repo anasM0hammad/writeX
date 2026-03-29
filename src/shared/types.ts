@@ -35,6 +35,7 @@ export type MessageType =
   | 'REWRITE_RESPONSE'
   | 'REWRITE_ERROR'
   | 'MODEL_STATUS'
+  | 'MODEL_STATUS_CHECK'
   | 'MODEL_LOAD_REQUEST'
   | 'MODEL_PROGRESS'
   | 'WEBGPU_CHECK'
@@ -83,6 +84,10 @@ export interface WebGPUResult {
   supported: boolean;
 }
 
+export interface ModelStatusCheck {
+  type: 'MODEL_STATUS_CHECK';
+}
+
 export interface ContextMenuRewrite {
   type: 'CONTEXT_MENU_REWRITE';
   tone: Tone;
@@ -95,6 +100,7 @@ export type ExtensionMessage =
   | ModelStatusMessage
   | ModelLoadRequest
   | ModelProgress
+  | ModelStatusCheck
   | WebGPUCheck
   | WebGPUResult
   | ContextMenuRewrite;
