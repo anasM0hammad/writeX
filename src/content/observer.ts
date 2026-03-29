@@ -1,23 +1,15 @@
-import { EL_PREFIX } from '@shared/constants';
-
 type ComposeBoxCallback = (composeBox: HTMLElement) => void;
 
 const OBSERVER_DEBOUNCE_MS = 300;
 
-/**
- * Observes the DOM for post compose areas.
- * Uses MutationObserver for resilience against X DOM changes.
- */
 export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserver {
   const processed = new WeakSet<HTMLElement>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scan() {
-    // Find all textbox elements used for composing posts
     const textboxes = document.querySelectorAll<HTMLElement>('[role="textbox"]');
 
     textboxes.forEach((textbox) => {
-      // Walk up to find the outermost compose form container
       const composeBox = findComposeRoot(textbox);
       if (composeBox && !processed.has(composeBox)) {
         processed.add(composeBox);
@@ -34,49 +26,46 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
   const observer = new MutationObserver(debouncedScan);
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Initial scan
+  // Initial scan + delayed rescan for late-loading compose areas
   scan();
+  setTimeout(scan, 1500);
+
   return observer;
 }
 
 /**
- * Walk up from a textbox to find the compose root container.
- * We look for the element that contains both the textbox and the toolbar/post button area.
+ * Walk up from textbox to find the compose root.
+ * Strategy: find the nearest ancestor that contains both the textbox AND a toolbar/button.
+ * Fallback: if not found, walk up a fixed number of levels from the textbox.
  */
 function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = textbox;
-  let lastGoodContainer: HTMLElement | null = null;
 
-  // Walk up to find a container that has both the textbox and a toolbar/post button
-  for (let depth = 0; current && depth < 15; depth++) {
-    // Check if this level contains the toolbar or post button
+  for (let depth = 0; current && depth < 20; depth++) {
     if (
       current.querySelector('[data-testid="toolBar"]') ||
       current.querySelector('[data-testid="tweetButton"]') ||
       current.querySelector('[data-testid="tweetButtonInline"]')
     ) {
-      lastGoodContainer = current;
-      break;
+      return current;
     }
     current = current.parentElement;
   }
 
-  return lastGoodContainer;
+  // Fallback: no toolbar found — walk up 5 levels from textbox as a reasonable container
+  current = textbox;
+  for (let i = 0; i < 5 && current?.parentElement; i++) {
+    current = current.parentElement;
+  }
+  return current;
 }
 
-/**
- * Extract text from the compose box's textbox.
- */
 export function extractPostText(composeBox: HTMLElement): string {
   const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement;
   if (!textbox) return '';
   return textbox.innerText?.trim() ?? '';
 }
 
-/**
- * Replace text in the compose box's textbox.
- * Uses execCommand to work with X's React-managed state.
- */
 export function replacePostText(composeBox: HTMLElement, newText: string): void {
   const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement;
   if (!textbox) return;
