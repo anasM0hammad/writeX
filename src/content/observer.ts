@@ -72,12 +72,11 @@ export function replacePostText(composeBox: HTMLElement, newText: string): void 
 
   textbox.focus();
 
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(textbox);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-
+  // Use selectAll to reliably select all content in the contenteditable
+  document.execCommand('selectAll', false);
+  // Delete existing content first to avoid overlay artifacts
+  document.execCommand('delete', false);
+  // Insert new text — this properly updates React/Draft.js state
   document.execCommand('insertText', false, newText);
   textbox.dispatchEvent(new Event('input', { bubbles: true }));
 }
