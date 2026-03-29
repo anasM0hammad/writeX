@@ -47,9 +47,9 @@ function updateModelStatus(status: ModelStatus) {
     case 'not_loaded':
       modelBadge.textContent = 'Not loaded';
       modelBadge.className = 'wx-status-badge wx-badge-neutral';
-      btnLoadModel.style.display = 'none';
+      btnLoadModel.style.display = 'block';
       progressContainer.style.display = 'none';
-      modelHint.textContent = 'Open x.com to start loading the AI model automatically.';
+      modelHint.textContent = 'Click below to load the AI model, or open x.com to auto-load.';
       break;
 
     case 'downloading':
@@ -79,9 +79,10 @@ function updateModelStatus(status: ModelStatus) {
     case 'error':
       modelBadge.textContent = 'Error';
       modelBadge.className = 'wx-status-badge wx-badge-error';
-      btnLoadModel.style.display = 'none';
+      btnLoadModel.style.display = 'block';
+      btnLoadModel.textContent = 'Retry Loading';
       progressContainer.style.display = 'none';
-      modelHint.textContent = 'Failed to load model. Refresh x.com to retry.';
+      modelHint.textContent = 'Failed to load model. Click below to retry.';
       break;
 
     case 'no_webgpu':
@@ -108,6 +109,12 @@ port.onMessage.addListener((message: ExtensionMessage) => {
 
 // Request current status
 port.postMessage({ type: 'MODEL_STATUS' });
+
+// Load model button
+btnLoadModel.addEventListener('click', () => {
+  port.postMessage({ type: 'MODEL_LOAD_REQUEST' });
+  btnLoadModel.style.display = 'none';
+});
 
 // Init
 checkWebGPU();
