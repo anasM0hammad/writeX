@@ -104,6 +104,29 @@ export function injectRewriteUI(
     composeBox.appendChild(container);
   }
 
+  // --- Show/hide based on textbox content ---
+  const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
+  let hasText = !!(textbox && textbox.innerText?.trim());
+  container.style.display = hasText ? '' : 'none';
+
+  function checkTextVisibility() {
+    const text = textbox?.innerText?.trim() ?? '';
+    const nowHasText = text.length > 0;
+    if (nowHasText !== hasText) {
+      hasText = nowHasText;
+      container.style.display = hasText ? '' : 'none';
+    }
+  }
+
+  let textObserver: MutationObserver | null = null;
+  if (textbox) {
+    textbox.addEventListener('input', checkTextVisibility);
+    textbox.addEventListener('focus', checkTextVisibility);
+    // MutationObserver catches programmatic changes and paste
+    textObserver = new MutationObserver(checkTextVisibility);
+    textObserver.observe(textbox, { childList: true, subtree: true, characterData: true });
+  }
+
   function update(state: UIState) {
     // Reset error class
     resultText.classList.remove(`${EL_PREFIX}-error`);
@@ -159,6 +182,11 @@ export function injectRewriteUI(
   }
 
   function destroy() {
+    textObserver?.disconnect();
+    if (textbox) {
+      textbox.removeEventListener('input', checkTextVisibility);
+      textbox.removeEventListener('focus', checkTextVisibility);
+    }
     container.remove();
   }
 
