@@ -72,13 +72,30 @@ export function replacePostText(composeBox: HTMLElement, newText: string): void 
 
   textbox.focus();
 
-  // Select all content within the textbox using selectAllChildren
-  // This is scoped to the contenteditable and preserves Draft.js structure
   const selection = window.getSelection();
   if (!selection) return;
   selection.selectAllChildren(textbox);
 
-  // Single atomic insertText replaces the selection in one step.
-  // Avoids the delete→insert two-step which corrupts React/Draft.js state.
-  document.execCommand('insertText', false, newText);
+  // Simulate a paste via beforeinput event with insertFromPaste.
+  // X's editor (Lexical) handles paste events by reading from dataTransfer
+  // and updating its internal state — unlike execCommand('insertText')
+  // which only mutates the DOM, causing the editor state to desync.
+  // This ensures what you see in the box is what actually gets posted.
+  const dt = new DataTransfer();
+  dt.setData('text/plain', newText);
+
+  const beforeInput = new InputEvent('beforeinput', {
+    inputType: 'insertFromPaste',
+    dataTransfer: dt,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  } as any);
+
+  const wasIntercepted = !textbox.dispatchEvent(beforeInput);
+
+  if (!wasIntercepted) {
+    // Editor didn't handle the synthetic paste — fall back to execCommand
+    document.execCommand('insertText', false, newText);
+  }
 }
