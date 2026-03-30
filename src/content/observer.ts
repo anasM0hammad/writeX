@@ -72,11 +72,13 @@ export function replacePostText(composeBox: HTMLElement, newText: string): void 
 
   textbox.focus();
 
-  // Use selectAll to reliably select all content in the contenteditable
-  document.execCommand('selectAll', false);
-  // Delete existing content first to avoid overlay artifacts
-  document.execCommand('delete', false);
-  // Insert new text — this properly updates React/Draft.js state
+  // Select all content within the textbox using selectAllChildren
+  // This is scoped to the contenteditable and preserves Draft.js structure
+  const selection = window.getSelection();
+  if (!selection) return;
+  selection.selectAllChildren(textbox);
+
+  // Single atomic insertText replaces the selection in one step.
+  // Avoids the delete→insert two-step which corrupts React/Draft.js state.
   document.execCommand('insertText', false, newText);
-  textbox.dispatchEvent(new Event('input', { bubbles: true }));
 }

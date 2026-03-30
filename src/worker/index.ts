@@ -123,7 +123,7 @@ async function handleRewrite(request: RewriteRequest) {
       top_p: 0.9,
     });
 
-    const rewritten = response.choices?.[0]?.message?.content?.trim() ?? '';
+    let rewritten = response.choices?.[0]?.message?.content?.trim() ?? '';
 
     if (!rewritten) {
       send({
@@ -133,7 +133,13 @@ async function handleRewrite(request: RewriteRequest) {
       return;
     }
 
-    const cleaned = rewritten.replace(/^["']|["']$/g, '');
+    // Strip quotes
+    rewritten = rewritten.replace(/^["']|["']$/g, '');
+    // Strip common model prefixes
+    rewritten = rewritten.replace(/^(Here('s| is)[^:]*:|Sure[^:]*:|Rewritten[^:]*:)\s*/i, '');
+    // Strip trailing notes/disclaimers (lines starting with "Note:", "---", etc.)
+    rewritten = rewritten.replace(/(\n\s*[-—]+\s*\n[\s\S]*$|\n\s*Note:[\s\S]*$|\n\s*\(.*\)\s*$)/i, '');
+    const cleaned = rewritten.trim();
 
     send({
       type: 'REWRITE_RESPONSE',
