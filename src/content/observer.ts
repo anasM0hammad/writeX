@@ -7,7 +7,9 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scan() {
-    const textboxes = document.querySelectorAll<HTMLElement>('[role="textbox"]');
+    const textboxes = document.querySelectorAll<HTMLElement>(
+      'div[role="textbox"][contenteditable="true"]'
+    );
 
     textboxes.forEach((textbox) => {
       const composeBox = findComposeRoot(textbox);
@@ -52,12 +54,8 @@ function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
     current = current.parentElement;
   }
 
-  // Fallback: no toolbar found — walk up 5 levels from textbox as a reasonable container
-  current = textbox;
-  for (let i = 0; i < 5 && current?.parentElement; i++) {
-    current = current.parentElement;
-  }
-  return current;
+  // No toolbar found — not a valid compose box
+  return null;
 }
 
 export function extractPostText(composeBox: HTMLElement): string {
