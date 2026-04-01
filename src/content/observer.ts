@@ -59,7 +59,7 @@ function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
         testId === 'toolBar' ||
         testId === 'tweetButton' ||
         testId === 'tweetButtonInline' ||
-        child.querySelector(':scope > [data-testid="toolBar"]') !== null
+        child.querySelector('[data-testid="toolBar"]') !== null
       );
     });
 
