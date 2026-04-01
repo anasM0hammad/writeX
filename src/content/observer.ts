@@ -12,12 +12,9 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
     );
 
     textboxes.forEach((textbox) => {
-      // Deduplicate by textbox, not compose root
-      if (processed.has(textbox)) return;
-
       const composeBox = findComposeRoot(textbox);
-      if (composeBox) {
-        processed.add(textbox);
+      if (composeBox && !processed.has(composeBox)) {
+        processed.add(composeBox);
         onFound(composeBox);
       }
     });
@@ -40,31 +37,22 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
 
 /**
  * Walk up from textbox to find the compose root.
- * Strategy: at each ancestor, check if a SIBLING (not deep descendant) is
- * or contains a toolbar. This prevents matching a toolbar in a completely
- * different branch of the DOM (e.g. sidebar, other compose areas).
+ * Uses the original querySelector approach — finds the nearest ancestor
+ * that contains a toolbar. The UI insertion point is handled separately
+ * (anchored to the textbox, not the toolbar).
  */
 function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = textbox;
 
-  for (let depth = 0; current?.parentElement && depth < 10; depth++) {
-    const parent: HTMLElement = current.parentElement;
-
-    // Check siblings of the current node for toolbar elements
-    const siblings = Array.from(parent.children) as HTMLElement[];
-    const hasSiblingToolbar = siblings.some((child: HTMLElement) => {
-      if (child === current) return false;
-      const testId = child.getAttribute('data-testid');
-      return (
-        testId === 'toolBar' ||
-        testId === 'tweetButton' ||
-        testId === 'tweetButtonInline' ||
-        child.querySelector('[data-testid="toolBar"]') !== null
-      );
-    });
-
-    if (hasSiblingToolbar) return parent;
-    current = parent;
+  for (let depth = 0; current && depth < 15; depth++) {
+    if (
+      current.querySelector('[data-testid="toolBar"]') ||
+      current.querySelector('[data-testid="tweetButton"]') ||
+      current.querySelector('[data-testid="tweetButtonInline"]')
+    ) {
+      return current;
+    }
+    current = current.parentElement;
   }
 
   return null;

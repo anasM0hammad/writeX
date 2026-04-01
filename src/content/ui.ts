@@ -96,16 +96,23 @@ export function injectRewriteUI(
     callbacks.onDismiss();
   });
 
-  // Mount — insert before the toolbar so it sits between text and toolbar
-  const toolbar = composeBox.querySelector('[data-testid="toolBar"]');
-  if (toolbar) {
-    toolbar.parentElement?.insertBefore(container, toolbar);
+  // --- Show/hide based on textbox content ---
+  const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
+
+  // Mount — insert directly after the textbox element.
+  // This is the only reliable anchor point. Searching for toolbar via
+  // querySelector on a large compose root finds the wrong one.
+  if (textbox) {
+    // Walk up from textbox to find the right insertion level —
+    // the direct child of composeBox that contains the textbox
+    let anchor: HTMLElement = textbox;
+    while (anchor.parentElement && anchor.parentElement !== composeBox) {
+      anchor = anchor.parentElement;
+    }
+    anchor.insertAdjacentElement('afterend', container);
   } else {
     composeBox.appendChild(container);
   }
-
-  // --- Show/hide based on textbox content ---
-  const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
   let hasText = !!(textbox && textbox.innerText?.trim());
   container.style.display = hasText ? '' : 'none';
 
