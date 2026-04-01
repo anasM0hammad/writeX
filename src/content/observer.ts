@@ -12,9 +12,12 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
     );
 
     textboxes.forEach((textbox) => {
+      // Deduplicate by textbox, not compose root
+      if (processed.has(textbox)) return;
+
       const composeBox = findComposeRoot(textbox);
-      if (composeBox && !processed.has(composeBox)) {
-        processed.add(composeBox);
+      if (composeBox) {
+        processed.add(textbox);
         onFound(composeBox);
       }
     });
@@ -37,24 +40,33 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
 
 /**
  * Walk up from textbox to find the compose root.
- * Strategy: find the nearest ancestor that contains both the textbox AND a toolbar/button.
- * Fallback: if not found, walk up a fixed number of levels from the textbox.
+ * Strategy: at each ancestor, check if a SIBLING (not deep descendant) is
+ * or contains a toolbar. This prevents matching a toolbar in a completely
+ * different branch of the DOM (e.g. sidebar, other compose areas).
  */
 function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = textbox;
 
-  for (let depth = 0; current && depth < 20; depth++) {
-    if (
-      current.querySelector('[data-testid="toolBar"]') ||
-      current.querySelector('[data-testid="tweetButton"]') ||
-      current.querySelector('[data-testid="tweetButtonInline"]')
-    ) {
-      return current;
-    }
-    current = current.parentElement;
+  for (let depth = 0; current?.parentElement && depth < 10; depth++) {
+    const parent: HTMLElement = current.parentElement;
+
+    // Check siblings of the current node for toolbar elements
+    const siblings = Array.from(parent.children) as HTMLElement[];
+    const hasSiblingToolbar = siblings.some((child: HTMLElement) => {
+      if (child === current) return false;
+      const testId = child.getAttribute('data-testid');
+      return (
+        testId === 'toolBar' ||
+        testId === 'tweetButton' ||
+        testId === 'tweetButtonInline' ||
+        child.querySelector(':scope > [data-testid="toolBar"]') !== null
+      );
+    });
+
+    if (hasSiblingToolbar) return parent;
+    current = parent;
   }
 
-  // No toolbar found — not a valid compose box
   return null;
 }
 
