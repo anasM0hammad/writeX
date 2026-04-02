@@ -122,6 +122,13 @@ chrome.runtime.onConnect.addListener((port) => {
           updateBadge(modelStatus);
           broadcastToTabs(message);
           broadcastToPopups(message);
+          // Worker reported not_loaded (e.g. fresh offscreen doc after restart)
+          // Auto-trigger load if user has X tabs open
+          if (message.status === 'not_loaded') {
+            chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] }, (tabs) => {
+              if (tabs.length > 0) triggerModelLoad();
+            });
+          }
           break;
         case 'MODEL_PROGRESS':
           chrome.action.setBadgeText({ text: `${Math.round(message.progress)}%` });

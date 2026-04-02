@@ -27,10 +27,7 @@ function connectPort() {
         handleRewrite(message as RewriteRequest);
         break;
       case 'MODEL_STATUS_CHECK':
-        // Background is asking if model is already loaded
-        if (engine) {
-          send({ type: 'MODEL_STATUS', status: 'ready' } as ExtensionMessage);
-        }
+        send({ type: 'MODEL_STATUS', status: engine ? 'ready' : 'not_loaded' } as ExtensionMessage);
         break;
     }
   });
@@ -41,9 +38,11 @@ function connectPort() {
     setTimeout(connectPort, 500);
   });
 
-  // If model is already loaded, notify the new background immediately
+  // Always report actual model state on connect so background stays in sync
   if (engine) {
     send({ type: 'MODEL_STATUS', status: 'ready' } as ExtensionMessage);
+  } else {
+    send({ type: 'MODEL_STATUS', status: 'not_loaded' } as ExtensionMessage);
   }
 }
 
