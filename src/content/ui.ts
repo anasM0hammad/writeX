@@ -99,17 +99,10 @@ export function injectRewriteUI(
   // --- Show/hide based on textbox content ---
   const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
 
-  // Mount — insert directly after the textbox element.
-  // This is the only reliable anchor point. Searching for toolbar via
-  // querySelector on a large compose root finds the wrong one.
-  if (textbox) {
-    // Walk up from textbox to find the right insertion level —
-    // the direct child of composeBox that contains the textbox
-    let anchor: HTMLElement = textbox;
-    while (anchor.parentElement && anchor.parentElement !== composeBox) {
-      anchor = anchor.parentElement;
-    }
-    anchor.insertAdjacentElement('afterend', container);
+  // Mount — insert directly after the textbox's parent wrapper.
+  // The textbox is always the reliable anchor. No toolbar searching.
+  if (textbox && textbox.parentElement) {
+    textbox.parentElement.insertAdjacentElement('afterend', container);
   } else {
     composeBox.appendChild(container);
   }
