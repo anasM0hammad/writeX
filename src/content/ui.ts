@@ -96,16 +96,16 @@ export function injectRewriteUI(
     callbacks.onDismiss();
   });
 
-  // --- Show/hide based on textbox content ---
-  const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
-
-  // Mount — insert directly after the textbox's parent wrapper.
-  // The textbox is always the reliable anchor. No toolbar searching.
-  if (textbox && textbox.parentElement) {
-    textbox.parentElement.insertAdjacentElement('afterend', container);
+  // Mount — insert before the toolbar so it sits between text and toolbar
+  const toolbar = composeBox.querySelector('[data-testid="toolBar"]');
+  if (toolbar) {
+    toolbar.parentElement?.insertBefore(container, toolbar);
   } else {
     composeBox.appendChild(container);
   }
+
+  // --- Show/hide based on textbox content ---
+  const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement | null;
   let hasText = !!(textbox && textbox.innerText?.trim());
   container.style.display = hasText ? '' : 'none';
 

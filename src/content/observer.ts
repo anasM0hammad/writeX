@@ -7,9 +7,7 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scan() {
-    const textboxes = document.querySelectorAll<HTMLElement>(
-      'div[role="textbox"][contenteditable="true"]'
-    );
+    const textboxes = document.querySelectorAll<HTMLElement>('[role="textbox"]');
 
     textboxes.forEach((textbox) => {
       const composeBox = findComposeRoot(textbox);
@@ -37,14 +35,13 @@ export function observeComposeBoxes(onFound: ComposeBoxCallback): MutationObserv
 
 /**
  * Walk up from textbox to find the compose root.
- * Uses the original querySelector approach — finds the nearest ancestor
- * that contains a toolbar. The UI insertion point is handled separately
- * (anchored to the textbox, not the toolbar).
+ * Strategy: find the nearest ancestor that contains both the textbox AND a toolbar/button.
+ * Fallback: if not found, walk up a fixed number of levels from the textbox.
  */
 function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = textbox;
 
-  for (let depth = 0; current && depth < 15; depth++) {
+  for (let depth = 0; current && depth < 20; depth++) {
     if (
       current.querySelector('[data-testid="toolBar"]') ||
       current.querySelector('[data-testid="tweetButton"]') ||
@@ -55,7 +52,12 @@ function findComposeRoot(textbox: HTMLElement): HTMLElement | null {
     current = current.parentElement;
   }
 
-  return null;
+  // Fallback: no toolbar found — walk up 5 levels from textbox as a reasonable container
+  current = textbox;
+  for (let i = 0; i < 5 && current?.parentElement; i++) {
+    current = current.parentElement;
+  }
+  return current;
 }
 
 export function extractPostText(composeBox: HTMLElement): string {
