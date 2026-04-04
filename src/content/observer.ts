@@ -70,32 +70,20 @@ export function replacePostText(composeBox: HTMLElement, newText: string): void 
   const textbox = composeBox.querySelector('[role="textbox"]') as HTMLElement;
   if (!textbox) return;
 
+  // Step 1: Focus the textbox
   textbox.focus();
 
+  // Step 2: Select all text. execCommand('selectAll') scopes to the
+  // focused contenteditable element automatically.
+  document.execCommand('selectAll');
+
+  // Step 3: Replace with new text via insertText. This fires trusted
+  // beforeinput/input events that Lexical processes.
+  document.execCommand('insertText', false, newText);
+
+  // Step 4: Collapse cursor to end so keyboard works immediately after.
   const selection = window.getSelection();
-  if (!selection) return;
-  selection.selectAllChildren(textbox);
-
-  // Simulate a paste via beforeinput event with insertFromPaste.
-  // X's editor (Lexical) handles paste events by reading from dataTransfer
-  // and updating its internal state — unlike execCommand('insertText')
-  // which only mutates the DOM, causing the editor state to desync.
-  // This ensures what you see in the box is what actually gets posted.
-  const dt = new DataTransfer();
-  dt.setData('text/plain', newText);
-
-  const beforeInput = new InputEvent('beforeinput', {
-    inputType: 'insertFromPaste',
-    dataTransfer: dt,
-    bubbles: true,
-    cancelable: true,
-    composed: true,
-  } as any);
-
-  const wasIntercepted = !textbox.dispatchEvent(beforeInput);
-
-  if (!wasIntercepted) {
-    // Editor didn't handle the synthetic paste — fall back to execCommand
-    document.execCommand('insertText', false, newText);
+  if (selection && selection.rangeCount > 0) {
+    selection.collapseToEnd();
   }
 }
