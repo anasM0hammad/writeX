@@ -13,7 +13,7 @@ export const TONE_PRESETS: ToneConfig[] = [
     id: 'improve',
     label: 'Improve',
     emoji: '\u2728',
-    prompt: 'Improve clarity and readability. Make it more engaging while keeping the original meaning.',
+    prompt: 'Fix spelling and grammar errors. Improve phrasing slightly for clarity. Keep the same tone, voice, and style as the original. Do not rewrite or restructure.',
   },
   {
     id: 'viral',
